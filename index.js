@@ -24,7 +24,7 @@ app.post('/api/login', async (req, res) => {
         const client = new Client({
             checkUpdate: false,
             readyStatus: false,
-            patchVoice: false
+            patchVoice: true   // Ses için önemli
         });
 
         client.on('error', (error) => console.error('Client error:', error.message));
@@ -51,9 +51,9 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-// ====================== SES KANALINA GİR ======================
+// ====================== SES KANALINA GİR (Düzeltilmiş) ======================
 app.post('/api/voice/join', async (req, res) => {
-    const { userId, channelId, selfMute = true, selfDeaf = true } = req.body;
+    const { userId, channelId, selfMute = true, selfDeaf = false } = req.body;
 
     const client = activeClients.get(userId);
     if (!client) return res.status(401).json({ error: 'Önce giriş yapmalısın!' });
@@ -62,13 +62,13 @@ app.post('/api/voice/join', async (req, res) => {
     try {
         const channel = client.channels.cache.get(channelId);
         if (!channel || channel.type !== 2) {
-            return res.status(404).json({ error: 'Geçerli bir ses kanalı bulunamadı!' });
+            return res.status(404).json({ error: 'Geçerli bir ses kanalı bulunamadı! (Sadece ses kanalı IDsi girin)' });
         }
 
-        await client.voice.joinChannel(channel, {
+        // Daha stabil join yöntemi
+        await channel.join({
             selfMute: !!selfMute,
-            selfDeaf: !!selfDeaf,
-            selfVideo: false
+            selfDeaf: !!selfDeaf
         });
 
         console.log(`🔊 Ses kanalına girildi → ${channel.name} (${channelId}) | ${client.user.tag}`);
@@ -79,8 +79,8 @@ app.post('/api/voice/join', async (req, res) => {
             channel: { id: channel.id, name: channel.name }
         });
     } catch (error) {
-        console.error('Voice join error:', error);
-        res.status(500).json({ error: 'Ses kanalına girilemedi!', details: error.message });
+        console.error('Voice join error:', error.message);
+        res.status(500).json({ error: 'Ses kanalına girilemedi! Kanal ID doğru mu? Bot ses kanalında mı?', details: error.message });
     }
 });
 
@@ -91,82 +91,58 @@ app.post('/api/voice/leave', async (req, res) => {
     if (!client) return res.status(401).json({ error: 'Önce giriş yapmalısın!' });
 
     try {
-        if (client.voice?.connections) {
-            for (const [, connection] of client.voice.connections) {
-                connection.disconnect();
-            }
-        }
+        client.voice?.connections?.forEach(conn => conn.disconnect());
         console.log(`🔇 Ses kanalından çıkıldı: ${client.user.tag}`);
         res.json({ success: true, message: 'Ses kanalından çıkıldı!' });
     } catch (error) {
-        console.error('Voice leave error:', error);
-        res.status(500).json({ error: 'Ses kanalından çıkılamadı!', details: error.message });
+        res.status(500).json({ error: 'Çıkış yapılırken hata oluştu!', details: error.message });
     }
 });
 
-// ====================== RPC UYGULA (Fotoğraf + Ses Desteği) ======================
+// ====================== RPC UYGULA (Fotoğraf Düzeltilmiş) ======================
 app.post('/api/rpc/apply', async (req, res) => {
     const { userId, rpcData } = req.body;
     const client = activeClients.get(userId);
     if (!client) return res.status(401).json({ error: 'Önce giriş yapmalısın!' });
 
     try {
-        // Eski RPC'yi temizle
-        const clearPayload = {
-            op: 3,
-            d: { status: 'online', since: 0, activities: [], afk: false }
-        };
-
+        // Eski RPC temizle
+        const clearPayload = { op: 3, d: { status: 'online', since: 0, activities: [], afk: false } };
         if (client.ws?.shards?.size > 0) {
             const shard = client.ws.shards.first();
-            if (shard?.connection?.readyState === 1) {
-                shard.send(clearPayload);
-            }
+            if (shard?.connection?.readyState === 1) shard.send(clearPayload);
         }
 
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        await new Promise(r => setTimeout(r, 2500));
 
-        const activityTypes = {
-            'PLAYING': 0,
-            'STREAMING': 1,
-            'LISTENING': 2,
-            'WATCHING': 3,
-            'COMPETING': 5
-        };
+        const activityTypes = { 'PLAYING': 0, 'STREAMING': 1, 'LISTENING': 2, 'WATCHING': 3, 'COMPETING': 5 };
 
         const activity = {
-            name: rpcData.name,
+            name: rpcData.name || "KaiSearch RPC",
             type: activityTypes[rpcData.type] || 0,
-            application_id: rpcData.applicationId || '0',
+            application_id: rpcData.applicationId || "0",   // Buraya kendi app ID'nizi yazabilirsiniz
             created_at: Date.now()
         };
 
         if (rpcData.details) activity.details = rpcData.details;
         if (rpcData.state) activity.state = rpcData.state;
 
-        // ====================== BÜYÜK FOTOĞRAF (large_image) ======================
-        if (rpcData.largeImage) {
+        // ====================== BÜYÜK FOTOĞRAF ======================
+        if (rpcData.largeImage && rpcData.largeImage.trim() !== '') {
             activity.assets = {};
-            activity.assets.large_image = rpcData.largeImage;
-            if (rpcData.largeText) activity.assets.large_text = rpcData.largeText;
+            activity.assets.large_image = rpcData.largeImage.trim();   // Asset adı (ör: myphoto)
+            if (rpcData.largeText) activity.assets.large_text = rpcData.largeText.trim();
         }
 
         // Timestamp
         if (rpcData.customTime && rpcData.customTime > 0) {
-            const maxHours = Math.min(rpcData.customTime, 87600);
-            const startTime = Date.now() - (maxHours * 60 * 60 * 1000);
-            if (startTime > 0) activity.timestamps = { start: startTime };
+            const startTime = Date.now() - (rpcData.customTime * 3600000);
+            activity.timestamps = { start: startTime };
         } else if (rpcData.useTimestamp) {
             activity.timestamps = { start: Date.now() };
         }
 
-        // Custom Status + Activity
-        const customStatus = {
-            name: 'Custom Status',
-            type: 4,
-            state: rpcData.name || "RPC Tool",
-            emoji: null
-        };
+        const customStatus = { name: 'Custom Status', type: 4, state: rpcData.name || "RPC Tool", emoji: null };
 
         const presencePayload = {
             op: 3,
@@ -182,11 +158,10 @@ app.post('/api/rpc/apply', async (req, res) => {
             const shard = client.ws.shards.first();
             if (shard?.connection?.readyState === 1) {
                 shard.send(presencePayload);
-                console.log('✅ RPC + Fotoğraf uygulandı!');
             }
         }
 
-        res.json({ success: true, message: 'RPC ve fotoğraf başarıyla uygulandı!' });
+        res.json({ success: true, message: 'RPC uygulandı! (Fotoğraf için asset adı kullandığından emin ol)' });
     } catch (error) {
         console.error('RPC Hatası:', error);
         res.status(500).json({ error: 'RPC uygulanamadı!', details: error.message });
@@ -200,17 +175,13 @@ app.post('/api/rpc/clear', async (req, res) => {
     if (!client) return res.status(401).json({ error: 'Önce giriş yapmalısın!' });
 
     try {
-        const clearPayload = {
-            op: 3,
-            d: { status: 'online', since: 0, activities: [], afk: false }
-        };
-
+        const clearPayload = { op: 3, d: { status: 'online', since: 0, activities: [], afk: false } };
         if (client.ws?.shards?.size > 0) {
             const shard = client.ws.shards.first();
             if (shard?.connection?.readyState === 1) {
                 for (let i = 0; i < 5; i++) {
                     shard.send(clearPayload);
-                    await new Promise(r => setTimeout(r, 800));
+                    await new Promise(r => setTimeout(r, 700));
                 }
             }
         }
@@ -233,7 +204,7 @@ app.post('/api/logout', async (req, res) => {
 
 app.listen(PORT, () => {
     console.log('╔════════════════════════════════════════════╗');
-    console.log('║     ✅ RPC TOOL + SES + FOTOĞRAF AKTİF    ║');
+    console.log('║     ✅ RPC + SES + FOTOĞRAF DÜZELTİLDİ     ║');
     console.log('╚════════════════════════════════════════════╝');
-    console.log(`🌐 Tarayıcıda aç: http://localhost:${PORT}`);
+    console.log(`🌐 http://localhost:${PORT}`);
 });
