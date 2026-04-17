@@ -19,12 +19,9 @@ async function login() {
             currentUserId = data.user.id;
             currentUser = data.user;
 
-            // Login ekranını gizle
             document.getElementById('loginSection').style.display = 'none';
-            // Ana ekranı göster
             document.getElementById('mainSection').style.display = 'block';
 
-            // Kullanıcı bilgisini göster
             document.getElementById('userInfo').innerHTML = `
                 <img src="${data.user.avatar}" width="85" style="border-radius:50%; border: 4px solid #5865f2;">
                 <h2>${data.user.tag}</h2>
@@ -58,9 +55,14 @@ async function joinVoice() {
         });
 
         const data = await res.json();
-        alert(data.success ? `✅ ${data.message}` : `❌ ${data.error}`);
+
+        if (data.success) {
+            alert(`✅ ${data.message}`);
+        } else {
+            alert(`❌ ${data.error}\n\n${data.details || ''}`);
+        }
     } catch (err) {
-        alert('Bağlantı hatası oluştu!');
+        alert('Bağlantı sırasında hata oluştu! Sunucu çalışıyor mu?');
     }
 }
 
@@ -76,7 +78,7 @@ async function leaveVoice() {
         const data = await res.json();
         alert(data.success ? `✅ ${data.message}` : `❌ ${data.error}`);
     } catch (err) {
-        alert('Çıkış yapılırken hata oluştu!');
+        alert('Çıkış sırasında hata oluştu!');
     }
 }
 
