@@ -1,120 +1,167 @@
-let currentUserId = null;
-let currentUser = null;
-
-// ====================== LOGIN ======================
-async function login() {
-    const token = document.getElementById('token').value.trim();
-    if (!token) return alert('Lütfen token giriniz!');
-
-    try {
-        const res = await fetch('/api/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token })
-        });
-
-        const data = await res.json();
-
-        if (data.success) {
-            currentUserId = data.user.id;
-            currentUser = data.user;
-
-            // Login ekranını gizle, ana ekranı göster
-            document.getElementById('loginSection').style.display = 'none';
-            document.getElementById('mainSection').style.display = 'block';
-
-            // Kullanıcı bilgisini göster
-            document.getElementById('userInfo').innerHTML = `
-                <img src="${data.user.avatar}" width="80" style="border-radius:50%; border: 3px solid #5865f2;">
-                <h2>${data.user.tag}</h2>
-                <p style="color:#b9bbbe;">ID: ${data.user.id}</p>
-            `;
-
-            alert(`✅ Hoş geldin, ${data.user.username}!`);
-        } else {
-            alert('❌ Hata: ' + (data.error || 'Bilinmeyen hata'));
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KaiSearch RPC Tool</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap');
+        
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            color: #fff;
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
         }
-    } catch (err) {
-        alert('Bağlantı hatası! Sunucunun çalıştığından emin olun.');
-    }
-}
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            font-size: 2.8rem;
+            margin: 0;
+            background: linear-gradient(to right, #5865f2, #7289da);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .card {
+            background: rgba(30, 31, 48, 0.95);
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.4);
+        }
+        input, select, button {
+            width: 100%;
+            padding: 14px;
+            margin: 10px 0;
+            border-radius: 8px;
+            border: none;
+            font-size: 1rem;
+        }
+        input, select {
+            background: #20222b;
+            color: #fff;
+        }
+        button {
+            background: #5865f2;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        button:hover {
+            background: #4752c4;
+            transform: translateY(-2px);
+        }
+        .btn-danger { background: #f04747; }
+        .btn-danger:hover { background: #d43f3f; }
+        .btn-discord {
+            background: #5865f2;
+            font-size: 1.15rem;
+            padding: 16px;
+            margin-top: 10px;
+        }
+        .flex { display: flex; gap: 12px; }
+        .flex button { flex: 1; }
+        .user-info {
+            text-align: center;
+            padding: 15px;
+        }
+        .user-info img {
+            border-radius: 50%;
+            border: 4px solid #5865f2;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>KaiSearch RPC Tool</h1>
+            <p>Selfbot • RPC • Ses Kanalı • Özel Fotoğraf</p>
+        </div>
 
-// ====================== SES KANALINA GİR ======================
-async function joinVoice() {
-    const channelId = document.getElementById('channelId').value.trim();
-    if (!channelId) return alert('Ses Kanal ID giriniz!');
+        <!-- Login Bölümü -->
+        <div id="loginSection" class="card">
+            <h2>Token ile Giriş Yap</h2>
+            <input type="password" id="token" placeholder="Discord Tokeninizi buraya yapıştırın...">
+            <button onclick="login()">Giriş Yap</button>
+        </div>
 
-    const res = await fetch('/api/voice/join', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            userId: currentUserId,
-            channelId: channelId,
-            selfMute: true,
-            selfDeaf: false
-        })
-    });
+        <!-- Ana Bölüm -->
+        <div id="mainSection" style="display: none;">
 
-    const data = await res.json();
-    alert(data.success ? `✅ ${data.message}` : `❌ ${data.error}`);
-}
+            <!-- Kullanıcı Bilgisi -->
+            <div class="card user-info" id="userInfo"></div>
 
-// ====================== SES KANALINDAN ÇIK ======================
-async function leaveVoice() {
-    const res = await fetch('/api/voice/leave', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: currentUserId })
-    });
+            <!-- Discord'a Katıl -->
+            <div class="card">
+                <button class="btn-discord" onclick="window.open('https://discord.gg/kaisearch', '_blank')">
+                    💬 KaiSearch Discord Sunucusuna Katıl
+                </button>
+            </div>
 
-    const data = await res.json();
-    alert(data.success ? `✅ ${data.message}` : `❌ ${data.error}`);
-}
+            <!-- Ses Kanalı -->
+            <div class="card">
+                <h2>🔊 Ses Kanalına Gir</h2>
+                <input type="text" id="channelId" placeholder="Ses Kanal ID'sini girin (ör: 123456789012345678)">
+                <div class="flex">
+                    <button onclick="joinVoice()">Ses Kanalına Gir</button>
+                    <button class="btn-danger" onclick="leaveVoice()">Ses Kanalından Çık</button>
+                </div>
+            </div>
 
-// ====================== RPC UYGULA ======================
-async function applyRPC() {
-    const rpcData = {
-        name: document.getElementById('name').value || "KaiSearch RPC",
-        type: document.getElementById('type').value,
-        details: document.getElementById('details').value,
-        state: document.getElementById('state').value,
-        largeImage: document.getElementById('largeImage').value.trim(),
-        largeText: document.getElementById('largeText').value.trim(),
-        useTimestamp: document.getElementById('useTimestamp').checked,
-        customTime: parseInt(document.getElementById('customTime').value) || 0,
-        status: document.getElementById('status').value
-    };
+            <!-- RPC Ayarları -->
+            <div class="card">
+                <h2>🎮 RPC Ayarları</h2>
+                
+                <input type="text" id="name" placeholder="Aktivite Adı" value="KaiSearch RPC">
+                
+                <select id="type">
+                    <option value="PLAYING">Oynuyor</option>
+                    <option value="STREAMING">Yayınlıyor</option>
+                    <option value="LISTENING">Dinliyor</option>
+                    <option value="WATCHING">İzliyor</option>
+                    <option value="COMPETING">Yarışıyor</option>
+                </select>
 
-    const res = await fetch('/api/rpc/apply', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: currentUserId, rpcData })
-    });
+                <input type="text" id="details" placeholder="Detay (Details)">
+                <input type="text" id="state" placeholder="Durum (State)">
 
-    const data = await res.json();
-    alert(data.success ? `✅ ${data.message}` : `❌ ${data.error}`);
-}
+                <input type="text" id="largeImage" placeholder="Büyük Fotoğraf URL (large image)">
+                <input type="text" id="largeText" placeholder="Fotoğraf üzerindeki yazı (large text)">
 
-// ====================== RPC TEMİZLE ======================
-async function clearRPC() {
-    const res = await fetch('/api/rpc/clear', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: currentUserId })
-    });
+                <label style="display:block; margin:12px 0 8px;">
+                    <input type="checkbox" id="useTimestamp" checked> Zaman damgası göster
+                </label>
+                
+                <input type="number" id="customTime" placeholder="Kaç saat önce başlasın? (0 = şimdi)" min="0">
 
-    const data = await res.json();
-    alert(data.success ? `✅ ${data.message}` : `❌ ${data.error}`);
-}
+                <select id="status">
+                    <option value="online">Çevrimiçi</option>
+                    <option value="idle">Boşta</option>
+                    <option value="dnd">Rahatsız Etmeyin</option>
+                </select>
 
-// ====================== LOGOUT ======================
-async function logout() {
-    if (confirm('Çıkış yapmak istediğinden emin misin?')) {
-        await fetch('/api/logout', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: currentUserId })
-        });
-        location.reload();
-    }
-}
+                <div class="flex">
+                    <button onclick="applyRPC()">RPC Uygula</button>
+                    <button onclick="clearRPC()">RPC Temizle</button>
+                </div>
+            </div>
+
+            <div style="text-align: center; margin-top: 20px;">
+                <button class="btn-danger" onclick="logout()">Çıkış Yap</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
