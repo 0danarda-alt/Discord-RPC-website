@@ -1,186 +1,120 @@
+let currentUserId = null;
 let currentUser = null;
 
-// Alert göster
-function showAlert(message, type = 'success') {
-    const alert = document.getElementById('alert');
-    alert.textContent = message;
-    alert.className = `alert ${type} active`;
-    
-    setTimeout(() => {
-        alert.classList.remove('active');
-    }, 5000);
-}
-
-// Login
+// ====================== LOGIN ======================
 async function login() {
-    const token = document.getElementById('tokenInput').value.trim();
-    
-    if (!token) {
-        showAlert('Token boş olamaz!', 'error');
-        return;
-    }
-    
+    const token = document.getElementById('token').value.trim();
+    if (!token) return alert('Lütfen token giriniz!');
+
     try {
-        const response = await fetch('/api/login', {
+        const res = await fetch('/api/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ token })
         });
-        
-        const data = await response.json();
-        
+
+        const data = await res.json();
+
         if (data.success) {
+            currentUserId = data.user.id;
             currentUser = data.user;
-            showUserInfo();
-            document.querySelector('.login-section').classList.remove('active');
-            document.querySelector('.rpc-section').classList.add('active');
-            showAlert(`Hoş geldin, ${data.user.username}!`, 'success');
+
+            // Login ekranını gizle, ana ekranı göster
+            document.getElementById('loginSection').style.display = 'none';
+            document.getElementById('mainSection').style.display = 'block';
+
+            // Kullanıcı bilgisini göster
+            document.getElementById('userInfo').innerHTML = `
+                <img src="${data.user.avatar}" width="80" style="border-radius:50%; border: 3px solid #5865f2;">
+                <h2>${data.user.tag}</h2>
+                <p style="color:#b9bbbe;">ID: ${data.user.id}</p>
+            `;
+
+            alert(`✅ Hoş geldin, ${data.user.username}!`);
         } else {
-            showAlert(data.error, 'error');
+            alert('❌ Hata: ' + (data.error || 'Bilinmeyen hata'));
         }
-    } catch (error) {
-        showAlert('Bağlantı hatası!', 'error');
+    } catch (err) {
+        alert('Bağlantı hatası! Sunucunun çalıştığından emin olun.');
     }
 }
 
-// Kullanıcı bilgilerini göster
-function showUserInfo() {
-    const userInfo = document.getElementById('userInfo');
-    userInfo.innerHTML = `
-        <img src="${currentUser.avatar}" alt="Avatar">
-        <div class="info">
-            <h3>${currentUser.username}</h3>
-            <p>ID: ${currentUser.id}</p>
-        </div>
-    `;
+// ====================== SES KANALINA GİR ======================
+async function joinVoice() {
+    const channelId = document.getElementById('channelId').value.trim();
+    if (!channelId) return alert('Ses Kanal ID giriniz!');
+
+    const res = await fetch('/api/voice/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            userId: currentUserId,
+            channelId: channelId,
+            selfMute: true,
+            selfDeaf: false
+        })
+    });
+
+    const data = await res.json();
+    alert(data.success ? `✅ ${data.message}` : `❌ ${data.error}`);
 }
 
-// RPC uygula
+// ====================== SES KANALINDAN ÇIK ======================
+async function leaveVoice() {
+    const res = await fetch('/api/voice/leave', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUserId })
+    });
+
+    const data = await res.json();
+    alert(data.success ? `✅ ${data.message}` : `❌ ${data.error}`);
+}
+
+// ====================== RPC UYGULA ======================
 async function applyRPC() {
-    const name = document.getElementById('name').value.trim();
-    
-    if (!name) {
-        showAlert('Aktivite ismi zorunlu!', 'error');
-        return;
-    }
-    
-    const customTimeValue = parseFloat(document.getElementById('customTime').value);
-    const timeUnit = document.getElementById('timeUnit').value;
-    
-    let customTimeInHours = null;
-    if (customTimeValue) {
-        switch(timeUnit) {
-            case 'seconds':
-                customTimeInHours = customTimeValue / 3600;
-                break;
-            case 'minutes':
-                customTimeInHours = customTimeValue / 60;
-                break;
-            case 'hours':
-                customTimeInHours = customTimeValue;
-                break;
-            case 'days':
-                customTimeInHours = customTimeValue * 24;
-                break;
-            case 'years':
-                customTimeInHours = customTimeValue * 365 * 24;
-                break;
-        }
-    }
-    
     const rpcData = {
-        status: document.getElementById('status').value,
+        name: document.getElementById('name').value || "KaiSearch RPC",
         type: document.getElementById('type').value,
-        name: name,
-        details: document.getElementById('details').value.trim(),
-        state: document.getElementById('state').value.trim(),
-        customTime: customTimeInHours,
-        useTimestamp: document.getElementById('useTimestamp').checked
+        details: document.getElementById('details').value,
+        state: document.getElementById('state').value,
+        largeImage: document.getElementById('largeImage').value.trim(),
+        largeText: document.getElementById('largeText').value.trim(),
+        useTimestamp: document.getElementById('useTimestamp').checked,
+        customTime: parseInt(document.getElementById('customTime').value) || 0,
+        status: document.getElementById('status').value
     };
-    
-    try {
-        const response = await fetch('/api/rpc/apply', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: currentUser.id, rpcData })
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            showAlert('✅ RPC başarıyla uygulandı!', 'success');
-        } else {
-            showAlert(data.error, 'error');
-        }
-    } catch (error) {
-        showAlert('Bağlantı hatası!', 'error');
-    }
+
+    const res = await fetch('/api/rpc/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUserId, rpcData })
+    });
+
+    const data = await res.json();
+    alert(data.success ? `✅ ${data.message}` : `❌ ${data.error}`);
 }
 
-// RPC temizle
+// ====================== RPC TEMİZLE ======================
 async function clearRPC() {
-    if (!confirm('RPC\'yi temizlemek istediğinden emin misin?')) {
-        return;
-    }
-    
-    try {
-        const response = await fetch('/api/rpc/clear', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: currentUser.id })
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            // Formu temizle
-            document.getElementById('name').value = '';
-            document.getElementById('details').value = '';
-            document.getElementById('state').value = '';
-            document.getElementById('customTime').value = '';
-            document.getElementById('timeUnit').value = 'hours';
-            document.getElementById('status').value = 'online';
-            document.getElementById('type').value = 'PLAYING';
-            document.getElementById('useTimestamp').checked = true;
-            
-            showAlert('✅ RPC temizlendi!', 'success');
-        } else {
-            showAlert(data.error, 'error');
-        }
-    } catch (error) {
-        showAlert('Bağlantı hatası!', 'error');
-    }
+    const res = await fetch('/api/rpc/clear', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUserId })
+    });
+
+    const data = await res.json();
+    alert(data.success ? `✅ ${data.message}` : `❌ ${data.error}`);
 }
 
-// Çıkış
+// ====================== LOGOUT ======================
 async function logout() {
-    if (!confirm('Çıkış yapmak istediğinden emin misin?')) {
-        return;
-    }
-    
-    try {
+    if (confirm('Çıkış yapmak istediğinden emin misin?')) {
         await fetch('/api/logout', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: currentUser.id })
+            body: JSON.stringify({ userId: currentUserId })
         });
-        
-        currentUser = null;
-        document.querySelector('.rpc-section').classList.remove('active');
-        document.querySelector('.login-section').classList.add('active');
-        document.getElementById('tokenInput').value = '';
-        
-        showAlert('Çıkış yapıldı!', 'success');
-    } catch (error) {
-        showAlert('Bağlantı hatası!', 'error');
+        location.reload();
     }
 }
-
-// Enter tuşu ile giriş
-document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('tokenInput').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            login();
-        }
-    });
-});
