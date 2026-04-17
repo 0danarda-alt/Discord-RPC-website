@@ -10,6 +10,7 @@ app.use(express.static('public'));
 
 const activeClients = new Map();
 
+// ====================== ANA SAYFA ======================
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
@@ -33,7 +34,7 @@ app.post('/api/login', async (req, res) => {
         const userId = client.user.id;
         activeClients.set(userId, client);
 
-        console.log(`✅ Giriş: ${client.user.tag} (${userId})`);
+        console.log(`✅ Giriş başarılı: ${client.user.tag} (${userId})`);
 
         res.json({
             success: true,
@@ -55,28 +56,22 @@ app.post('/api/voice/join', async (req, res) => {
     const { userId, channelId, selfMute = true, selfDeaf = true } = req.body;
 
     const client = activeClients.get(userId);
-    if (!client) {
-        return res.status(401).json({ error: 'Önce giriş yapmalısın!' });
-    }
-
-    if (!channelId) {
-        return res.status(400).json({ error: 'channelId gerekli!' });
-    }
+    if (!client) return res.status(401).json({ error: 'Önce giriş yapmalısın!' });
+    if (!channelId) return res.status(400).json({ error: 'channelId gerekli!' });
 
     try {
         const channel = client.channels.cache.get(channelId);
-        if (!channel || channel.type !== 2) { // 2 = GuildVoice
+        if (!channel || channel.type !== 2) {
             return res.status(404).json({ error: 'Geçerli bir ses kanalı bulunamadı!' });
         }
 
-        // Selfbot'ta voice join
-        const connection = await client.voice.joinChannel(channel, {
+        await client.voice.joinChannel(channel, {
             selfMute: !!selfMute,
             selfDeaf: !!selfDeaf,
             selfVideo: false
         });
 
-        console.log(`🔊 Ses kanalına girildi: ${channel.name} (${channelId}) - User: ${client.user.tag}`);
+        console.log(`🔊 Ses kanalına girildi → ${channel.name} (${channelId}) | ${client.user.tag}`);
 
         res.json({
             success: true,
@@ -92,17 +87,16 @@ app.post('/api/voice/join', async (req, res) => {
 // ====================== SES KANALINDAN ÇIK ======================
 app.post('/api/voice/leave', async (req, res) => {
     const { userId } = req.body;
-
     const client = activeClients.get(userId);
     if (!client) return res.status(401).json({ error: 'Önce giriş yapmalısın!' });
 
     try {
-        if (client.voice && client.voice.connections) {
-            for (const [guildId, connection] of client.voice.connections) {
+        if (client.voice?.connections) {
+            for (const [, connection] of client.voice.connections) {
                 connection.disconnect();
             }
         }
-        console.log(`🔇 Ses bağlantısı kesildi: ${client.user.tag}`);
+        console.log(`🔇 Ses kanalından çıkıldı: ${client.user.tag}`);
         res.json({ success: true, message: 'Ses kanalından çıkıldı!' });
     } catch (error) {
         console.error('Voice leave error:', error);
@@ -110,50 +104,57 @@ app.post('/api/voice/leave', async (req, res) => {
     }
 });
 
-// ====================== RPC UYGULA (Fotoğraf + Timestamp iyileştirildi) ======================
+// ====================== RPC UYGULA (Fotoğraf + Ses Desteği) ======================
 app.post('/api/rpc/apply', async (req, res) => {
     const { userId, rpcData } = req.body;
     const client = activeClients.get(userId);
-
     if (!client) return res.status(401).json({ error: 'Önce giriş yapmalısın!' });
 
     try {
         // Eski RPC'yi temizle
-        const clearPayload = { op: 3, d: { status: 'online', since: 0, activities: [], afk: false } };
+        const clearPayload = {
+            op: 3,
+            d: { status: 'online', since: 0, activities: [], afk: false }
+        };
 
         if (client.ws?.shards?.size > 0) {
             const shard = client.ws.shards.first();
-            if (shard?.connection?.readyState === 1) shard.send(clearPayload);
+            if (shard?.connection?.readyState === 1) {
+                shard.send(clearPayload);
+            }
         }
 
-        await new Promise(r => setTimeout(r, 3000)); // 3 saniye bekle (daha stabil)
+        await new Promise(resolve => setTimeout(resolve, 3000));
 
         const activityTypes = {
-            'PLAYING': 0, 'STREAMING': 1, 'LISTENING': 2,
-            'WATCHING': 3, 'COMPETING': 5
+            'PLAYING': 0,
+            'STREAMING': 1,
+            'LISTENING': 2,
+            'WATCHING': 3,
+            'COMPETING': 5
         };
 
         const activity = {
             name: rpcData.name,
             type: activityTypes[rpcData.type] || 0,
-            application_id: rpcData.applicationId || '0', // İstersen kendi app ID'ni verebilirsin
+            application_id: rpcData.applicationId || '0',
             created_at: Date.now()
         };
 
         if (rpcData.details) activity.details = rpcData.details;
         if (rpcData.state) activity.state = rpcData.state;
 
-        // === YENİ: BÜYÜK FOTOĞRAF (large_image) ===
+        // ====================== BÜYÜK FOTOĞRAF (large_image) ======================
         if (rpcData.largeImage) {
-            activity.assets = activity.assets || {};
-            activity.assets.large_image = rpcData.largeImage;   // Örnek: "mp:external/..." veya uygulama asset adı
+            activity.assets = {};
+            activity.assets.large_image = rpcData.largeImage;
             if (rpcData.largeText) activity.assets.large_text = rpcData.largeText;
         }
 
         // Timestamp
-        if (rpcData.customTime) {
+        if (rpcData.customTime && rpcData.customTime > 0) {
             const maxHours = Math.min(rpcData.customTime, 87600);
-            const startTime = Date.now() - (maxHours * 3600000);
+            const startTime = Date.now() - (maxHours * 60 * 60 * 1000);
             if (startTime > 0) activity.timestamps = { start: startTime };
         } else if (rpcData.useTimestamp) {
             activity.timestamps = { start: Date.now() };
@@ -163,7 +164,7 @@ app.post('/api/rpc/apply', async (req, res) => {
         const customStatus = {
             name: 'Custom Status',
             type: 4,
-            state: rpcData.name,
+            state: rpcData.name || "RPC Tool",
             emoji: null
         };
 
@@ -181,10 +182,11 @@ app.post('/api/rpc/apply', async (req, res) => {
             const shard = client.ws.shards.first();
             if (shard?.connection?.readyState === 1) {
                 shard.send(presencePayload);
+                console.log('✅ RPC + Fotoğraf uygulandı!');
             }
         }
 
-        res.json({ success: true, message: 'RPC + fotoğraf uygulandı!' });
+        res.json({ success: true, message: 'RPC ve fotoğraf başarıyla uygulandı!' });
     } catch (error) {
         console.error('RPC Hatası:', error);
         res.status(500).json({ error: 'RPC uygulanamadı!', details: error.message });
@@ -198,7 +200,10 @@ app.post('/api/rpc/clear', async (req, res) => {
     if (!client) return res.status(401).json({ error: 'Önce giriş yapmalısın!' });
 
     try {
-        const clearPayload = { op: 3, d: { status: 'online', since: 0, activities: [], afk: false } };
+        const clearPayload = {
+            op: 3,
+            d: { status: 'online', since: 0, activities: [], afk: false }
+        };
 
         if (client.ws?.shards?.size > 0) {
             const shard = client.ws.shards.first();
@@ -211,7 +216,7 @@ app.post('/api/rpc/clear', async (req, res) => {
         }
         res.json({ success: true, message: 'RPC temizlendi!' });
     } catch (error) {
-        res.status(500).json({ error: 'Temizlenemedi!', details: error.message });
+        res.status(500).json({ error: 'RPC temizlenemedi!', details: error.message });
     }
 });
 
@@ -227,8 +232,8 @@ app.post('/api/logout', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log('╔════════════════════════════════════╗');
-    console.log('║ ✅ RPC TOOL + SES + FOTOĞRAF AKTİF ║');
-    console.log('╚════════════════════════════════════╝');
-    console.log(`🌐 http://localhost:${PORT}`);
+    console.log('╔════════════════════════════════════════════╗');
+    console.log('║     ✅ RPC TOOL + SES + FOTOĞRAF AKTİF    ║');
+    console.log('╚════════════════════════════════════════════╝');
+    console.log(`🌐 Tarayıcıda aç: http://localhost:${PORT}`);
 });
