@@ -19,15 +19,14 @@ async function login() {
             currentUserId = data.user.id;
             currentUser = data.user;
 
-            // Login ekranını gizle, ana ekranı göster
             document.getElementById('loginSection').style.display = 'none';
             document.getElementById('mainSection').style.display = 'block';
 
-            // Kullanıcı bilgisini göster
+            // Kullanıcı bilgisini güzel göster
             document.getElementById('userInfo').innerHTML = `
-                <img src="${data.user.avatar}" width="80" style="border-radius:50%; border: 3px solid #5865f2;">
+                <img src="${data.user.avatar}" width="90" alt="avatar">
                 <h2>${data.user.tag}</h2>
-                <p style="color:#b9bbbe;">ID: ${data.user.id}</p>
+                <p style="color:#b9bbbe; margin:5px 0;">ID: ${data.user.id}</p>
             `;
 
             alert(`✅ Hoş geldin, ${data.user.username}!`);
